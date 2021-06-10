@@ -1,0 +1,513 @@
+---
+title: "Bio_phylo_build"
+author: "Kevin Healy"
+date: "05/06/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+This script builds a set of 100 phylogenies by joining various phylogenies together and adding error at each node based on the first appearance in fossil evidence. This set of phylogenies is then used for the subsequent analysis in the paper XXXXX
+
+#Packages and Data
+First lets load the packages. Apart from `mulTree`, which is available on github, all other packages are on CRAN.
+
+mulTree is a package designed to run multiple phylogenies in the MCMCglmm function and we will use the multip.phylo formate to store our phylogenies for later analysis. It is available to download from https://github.com/TGuillerme/mulTree
+
+```{r load up packages, include=TRUE, warning = FALSE}
+
+require(mulTree)
+
+library(devtools)
+library(MASS)
+library(popbio)
+library(popdemo)
+library(phytools)
+library(caper)
+library(taxize)
+library(fishtree)
+library(rotl)
+library(phangorn)
+
+```
+
+
+Lets also load some functions that we built specifically for this analysis 
+The phylo_bind_functions script has functions to build the phylogenies and include error in the nodes joining together trees.
+
+```{r load additional functions, include=TRUE}
+
+source("phylo_bind_functions.R")
+
+```
+
+
+Now lets load the dataset which contains the species we have paired population data for. We will match these species up with the various phylogenies starting at a given group and then adding the other various groups as we work are way down to the root of the phylogeny.
+```{r load data, include=TRUE}
+clean_data <- read.csv("BDG_Data_species_cleaned_2020-01-27.csv", 
+                       header = T, 
+                       stringsAsFactors = FALSE, 
+                       check.names = FALSE)
+```
+
+Two species are being droppped from the tree and need to have thier ott numbers fixed so they get picked up.
+```{r fix ott, include=TRUE}
+
+#for Prunus lusitanica we need to change ott4738867 to the number fo Prunus lusitanica var. lusitanic (ott4738867)
+clean_data[clean_data$Species == "Prunus lusitanica", "animal"] <- "ott5233303"
+clean_data[clean_data$Species == "Prunus lusitanica", "new_species"] <- "ott5233303"
+
+
+#for Pachycereus pringlei there is one entry with ott that needs to be changes to ott141048
+clean_data[clean_data$Species == "Pachycereus pringlei", "animal"] <- "ott141048"
+clean_data[clean_data$Species == "Pachycereus pringlei", "new_species"] <- "ott141048"
+
+#for Erica scoparia we need to use the closely realted Calluna vulgaris ott number
+clean_data[clean_data$Species == "Erica scoparia","animal"] <- "ott519874"
+clean_data[clean_data$Species == "Erica scoparia","new_species"] <- "ott519874"
+
+
+```
+
+
+Lets now upload each of the phylogenies we are going to use to build our super-dooper tree.
+We used the Metazoan phylogeny from the Open Tree of Life project (https://ot39.opentreeoflife.org/opentree/argus/opentree10.4@ott93302)  as a backbone. For Mammals we used a distribution of 100 trees from Kuhn et al 2011. For Aves we used the Jetz et al 2012 distribution of trees. For lizards we used the Pyron et al 2014 phylogeny.
+
+For our analysis we will use a distribution of 100 supertrees, however as many of the trees will not be suitable (for example, when first apperance fossil ranges overlap between nodes resulting in negative distances for certain topologies.)
+
+*Please note that as the seperate phylogenies are too large to host on Github they will need to be downloaded seperately from there sources. However, we do include the output distribution of trees (COMADRE_100_phylo_feb_2019.tre) that is the result of this script within the repository.
+
+
+```{r load trees, include=TRUE, warning = FALSE}
+
+#Metazoan backbone
+met_tree <- read.tree("metazoa.tre")
+met_tree  <- makeLabel(met_tree) 
+met_tree$node.label<-NULL
+
+#Mammal phylogeny
+mammal_phy <- read.nexus("FritzTree.rs200k.100trees.tre")
+
+#Aves phylogeny
+aves_phy <- read.tree("BirdzillaHackett10.tre")
+
+#Lizard phylogeny
+Lizard_phy <- read.tree("liz_and_snake_time_tree.txt")
+lizard_phy<-makeLabel(Lizard_phy)
+#this removes the node lables which can cause dublicate problems
+lizard_phy$node.label<-NULL
+
+
+#amphiban phylo
+amph_phy <- read.tree("Amphi.tre")
+#this removes the node lables which can cause dublicate problems
+amph_phy$node.label<-NULL
+
+#seedplant phylo
+plant_phy <- read.tree("mag2015_ot_dated.tre")
+
+#moss phylo
+moss_phy <- read.tree("subtree-node-ott246594-Bryophyta.tre")
+moss_phy$node.label<-NULL
+
+# lets also set the number of trees we will build. 
+# As we will have to drop trees due to the inclusion of uncertinatly in node age 
+# creating trees that dont corresponse with the structure of our backbone phylogeny
+# we need to more than 100
+sample.no <- 300
+```
+
+
+
+#Species and taxinomic groups
+
+To do this properly I will need to clean all the names at an earlier stage so that data can go from the loop straight to the mcmcmglmm/multree analysis 
+
+We will next need to catagorise each of the species into their major taxinomic group so that we do have the right phyognies to match them.
+
+
+```{r clean species names, include=TRUE, warning = FALSE}
+
+species_list <- unique(clean_data$new_species)
+
+
+###remove all the subspecies information
+#species_list  <- gsub(" subsp.*","", species_list)
+
+
+kingdom_list <- vector()
+taxa_list <- vector()
+orig_species_list <- vector()
+
+#creat a dummy dataset with just unique species in it.
+for(i in 1:length(species_list)){
+  
+kingdom_list[i] <- clean_data[clean_data$new_species == species_list[i], ][1,"kingdom"]
+taxa_list[i] <- clean_data[clean_data$new_species == species_list[i], ][1,"taxa"]
+orig_species_list[i] <- clean_data[clean_data$new_species == species_list[i], ][1,"Species"]
+ 
+}
+
+
+ fix_taxa_data <- data.frame(species_match = species_list,
+                            taxa = taxa_list,
+                            kingdom = kingdom_list,
+                            animal = species_list,
+                            orig_species_list = orig_species_list,
+                            stringsAsFactors = FALSE)
+
+```
+
+
+
+Now lets creat some super trees. First we join birds and squmatat together
+
+To link these trees to the common ancestor of Lepidosauria we used a range of 259-285 Myr from Jones et al 2013 
+
+```{r join aves and squamata, include=TRUE, warning = FALSE}
+
+bird_lizard_o <- jiggle.bind(x = aves_phy, 
+                               y = lizard_phy, 
+                               sample = 300, 
+                               min.age = 259, 
+                               max.age = 285)
+
+bird_lizard <- bird_lizard_o[[1]]
+bird_lizard__node <- bird_lizard_o[[2]]
+class(bird_lizard) <- "multiPhylo"
+
+```
+
+
+
+For the common ancestor of amniotes, we used the fossil Archerpeton anthracos (Holotype: RM 12056, Author: Carroll 1964, Reisz and Müller, Epoch: Westphalian A Canada Nova Scotia, Age: 318.1 – 314.6 Myr, Dating: International Commission on Stratigraphy 2009)
+
+```{r join aves and squamata to mammals, include=TRUE, warning = FALSE}
+
+
+amniote_tree_o <- jiggle.bind(x = bird_lizard, 
+                             y = mammal_phy, 
+                             sample = sample.no, 
+                             min.age = 314.6, 
+                             max.age = 318.1)
+
+
+amniote_tree <- amniote_tree_o[[1]]
+amniote_node <- amniote_tree_o[[2]]
+class(amniote_tree) <- "multiPhylo"
+
+```
+
+
+Next ampbibians
+
+I need to get a fossil age for this.
+
+```{r join amniotes to amphibians, include=TRUE, warning = FALSE}
+
+
+amph_phy_clipped <-  comparative.data(phy = amph_phy, 
+                                      data = fix_taxa_data, 
+                                      names.col = "species_match", 
+                                      force.root = TRUE)$phy
+
+
+amni_amphi_tree_o <- jiggle.bind(x = amniote_tree, 
+                             y = amph_phy_clipped, 
+                             sample = sample.no, 
+                             min.age = 359.2, 
+                             max.age = 359.2)
+
+
+amni_amphi_tree <- amni_amphi_tree_o[[1]]
+amni_amphi_node <- amni_amphi_tree_o[[2]]
+class(amni_amphi_tree) <- "multiPhylo"
+
+```
+
+
+Next we add fish
+
+
+```{r join tetrapods to fish, include=TRUE, warning = FALSE}
+
+fish_data <- fix_taxa_data[fix_taxa_data$taxa %in% c("Actinopterygii"),]
+
+w_fish_tree <- fishtree_phylogeny(type = c("chronogram"))
+
+#remove the subspecies on Plecoglossus_altivelis
+w_fish_tree$tip.label[grep("Plecoglossus", w_fish_tree$tip.label)][2] <- "Plecoglossus_altivelis"
+
+fish_tree <- comparative.data(phy = w_fish_tree, 
+                              data = fish_data, 
+                              names.col = "species_match" , 
+                              force.root = TRUE)$phy
+
+
+##Need to get a sensable split. age should be at lungfish or somerthing
+#tree_fish $edge.length <- tree_fish $edge.length*418.5
+
+
+fish_tetrapod_tree_o <- jiggle.bind(x = amni_amphi_tree, 
+                                    y = fish_tree, 
+                                    sample = sample.no, 
+                                    min.age = 419, 
+                                    max.age = 419)
+
+
+fish_tetrapod_tree <- fish_tetrapod_tree_o[[1]]
+fish_tetrapod_node <- fish_tetrapod_tree_o[[2]]
+class(fish_tetrapod_tree) <- "multiPhylo"
+
+```
+
+
+No add in the inverr groups.
+For the common ancestor between deuterostomes and protostomes we use the date of 555-558 Myr for the fossil Kimberella quadrata (Holotype: PI 2734, Fedonkin et al 2007, Epoch: Ediacarn, Formation; South Australia). 
+
+```{r join verts to inverts, include=TRUE, warning = FALSE}
+
+invert_data <- fix_taxa_data[fix_taxa_data$taxa %in% c("Gastropoda",
+                                                       "Lepidoptera",
+                                                       "Hymenoptera",
+                                                       "Hemiptera",
+                                                       "Coleoptera"),]
+
+invert_tree <- comparative.data(phy = met_tree, 
+                              data = invert_data, 
+                              names.col = "species_match" , 
+                              force.root = TRUE)
+
+invert_tree_ult <-compute.brlen(invert_tree$phy, 
+                          method = "Grafen", 
+                          power = 1)
+
+##Need to get a sensable split. age should be at lungfish or somerthing
+invert_tree_ult $edge.length <- invert_tree_ult $edge.length*550
+
+
+
+bi_lat_tree_o <- jiggle.bind(x = invert_tree_ult, 
+                                    y = fish_tetrapod_tree, 
+                                    sample = sample.no, 
+                                    min.age = 555, 
+                                    max.age = 558)
+
+
+bi_lat_tree <- bi_lat_tree_o[[1]]
+bi_lat_node <- bi_lat_tree_o[[2]]
+class(bi_lat_tree) <- "multiPhylo"
+
+```
+
+
+
+
+Next the plants.
+```{r Plants , include=TRUE, warning = FALSE}
+
+angio_data <- fix_taxa_data[fix_taxa_data$taxa %in% c("Angiosperms",
+                                                      "Pinophyta"),]
+
+
+angio_tree <- comparative.data(phy = plant_phy, 
+                              data = angio_data, 
+                              names.col = "species_match" , 
+                              force.root = TRUE)
+
+dropped_plants <- angio_data[angio_data$species_match %in% angio_tree$dropped$unmatched.rows,]
+
+angio_tree_o <- angio_tree$phy
+class(angio_tree_o) <- "phylo"
+
+
+moss_liver_data <- fix_taxa_data[fix_taxa_data$taxa %in% c("Bryophyta",
+                                                           "Liverwort",
+                                                           "Pteridophyta"),]
+
+##add the ferns Selliguea_hastata ott414017
+ferns_plants_tree1 <-  bind_single(tree = angio_tree_o, 
+                                species = "ott414017", 
+                                sample = 2, 
+                                root.age = 407)
+
+##add the two ferns Dryopteris_marginalis ott1056059
+ferns_plants_tree <-  bind_single(tree = ferns_plants_tree1, 
+                                species = "ott1056059", 
+                                sample = 2, 
+                                root.age = 407)
+
+
+##add the one liverworth Porella canariensis ott804574
+liver_ferns_plants_tree <-  bind_single(tree = ferns_plants_tree[[1]], 
+                                species = "ott804574", 
+                                sample = 2, 
+                                root.age = 480)
+
+liver_ferns_plants_node <- rep("480",sample.no)
+            
+##add the 4 byopytes
+moss_rows <- rownames(fix_taxa_data[fix_taxa_data$taxa %in% c("Bryophyta"),])
+
+##Need to fix two species here
+
+for(i in moss_rows){
+
+    fix_taxa_data[i,"species_match"]  <- moss_phy$tip.label[grep(fix_taxa_data[i,"species_match"],
+                                                                 moss_phy$tip.label)][1]
+}
+
+
+##Sphagnum_palustre has a subspecies so needs to be pulled out with the following line
+fix_taxa_data[fix_taxa_data$orig_species_list == "Sphagnum palustre","species_match"] <- moss_phy$tip.label[grep("Sphagnum_palustre", moss_phy$tip.label)]
+
+moss_data <- fix_taxa_data[fix_taxa_data$taxa %in% c("Bryophyta"),]
+
+spag_data <- moss_data[grep("Sphagnum", moss_data$species_match),]
+
+
+spag_tree <- comparative.data(phy = moss_phy, 
+                              data = spag_data, 
+                              names.col = "species_match" , 
+                              force.root = TRUE)$phy
+
+spag_tree$edge.length <- 14
+
+spag_tree_ult <-compute.brlen(spag_tree, 
+                          method = "Grafen", 
+                          power = 1)
+
+##add Pleurochaete_squarrosa_ott479257 based on TimeTree estimate of 320 
+moss_tree <-  bind_single(tree = spag_tree_ult, 
+                                species = "Pleurochaete_squarrosa_ott479257", 
+                                sample = 2, 
+                                root.age = 320)
+
+      
+full_plant_tree_o <- jiggle.bind(x = liver_ferns_plants_tree, 
+                                    y = moss_tree, 
+                                    sample = sample.no, 
+                                    min.age = 465, 
+                                    max.age = 533)
+
+
+full_plant_tree <- full_plant_tree_o[[1]]
+full_plant_node <- full_plant_tree_o[[2]]
+class(full_plant_tree) <- "multiPhylo"
+
+```
+
+
+Bind plants and animals
+```{r Bind plants and animals , include=TRUE, warning = FALSE}
+
+plant_animal_tree_o <- jiggle.bind(x = bi_lat_tree, 
+                             y = full_plant_tree, 
+                             sample = sample.no, 
+                             min.age = 957, 
+                             max.age = 1673)
+
+
+plant_animal_tree <- plant_animal_tree_o[[1]]
+plant_animal_node <- plant_animal_tree_o[[2]]
+class(plant_animal_tree) <- "multiPhylo"
+
+```
+
+
+
+```{r building the final trees, include=TRUE, warning = FALSE}
+
+final_tree<- list()
+for(i in 1:(length(plant_animal_tree))){
+  plant_animal_tree[[i]]$node.label = "NA"
+}
+
+
+
+##Now we clean each of the trees so it only has the species from the dataset in
+##it
+for(i in 1:(length(plant_animal_tree))){
+  
+  final_tree[[i]] <- comparative.data(phy = plant_animal_tree[[i]], 
+                                      data = fix_taxa_data, 
+                                      names.col = "species_match", 
+                                      force.root = TRUE)$phy
+}
+
+
+
+
+```
+
+
+
+```{r checking the trees, include=TRUE, warning = FALSE}
+
+###check that the ancestral nodes dont jump forward in time
+###first put the ages with youngest in row 1 an doldest in the last row
+node_bind_ages <- rbind(bird_lizard__node, amniote_node, amni_amphi_node, 
+                        fish_tetrapod_node, bi_lat_node, plant_animal_node)
+
+plant_node_ages <- rbind(liver_ferns_plants_node, full_plant_node)
+
+
+
+###check each colunm is monotonsly increasing
+mono_tim_animal <- vector()
+mono_tim_plant <- vector()
+mono_tim_all <- vector()
+mono_clean <- vector()
+
+for(i in 1:sample.no){ 
+  mono_tim_animal[i] <-  all(node_bind_ages[,i] == cummax(node_bind_ages[,i]))
+  mono_tim_plant[i] <-  all(plant_node_ages[,i] == cummax(plant_node_ages[,i]))
+
+}
+
+mono_tim_all <- data.frame(mono_tim_animal,
+                              mono_tim_plant, 
+                              row_names = 1:sample.no)
+
+mono_clean <- mono_tim_all[mono_tim_all[,1] == TRUE &
+                              mono_tim_all[,2] == TRUE, 
+                              "row_names"]
+
+##now make a list of the clean trees
+final_clean_trees <- list()
+for(i in 1:length(mono_clean)){
+  final_clean_trees[[i]] <- final_tree[[mono_clean[i]]]
+}
+
+final_clean_trees_renames <- final_clean_trees
+
+
+#numerical error in plant tree is causing ultrametric problem
+#may need to add extra 0.001 to 0 branch length.
+#so we use force.ultrametric to extend all tips to the same.
+is_ultra <- vector()
+for(i in 1:length(final_clean_trees_renames)) {
+  final_clean_trees_renames[[i]] <- force.ultrametric(final_clean_trees_renames[[i]],
+                                                      method=c("nnls"))
+  is_ultra[i] <- is.ultrametric(final_clean_trees_renames[[i]])
+  }
+
+ultra_row <- which(is_ultra ==TRUE)
+
+final_clean_trees_ultra <- final_clean_trees_renames[ultra_row[1:100]]
+
+```
+
+
+
+and we read out our lovely clean multiphylo object.
+```{r Hurayy, include=TRUE}
+
+class(final_clean_trees_ultra) <- "multiPhylo"
+
+treeFileName <- paste("Bio_island_100_phylo_",Sys.Date() ,".tre",sep="") 
+
+
+write.tree(phy = final_clean_trees_ultra, file = treeFileName)
+
+```

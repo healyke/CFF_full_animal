@@ -1,0 +1,450 @@
+---
+title: "CFF_phylo"
+author: "Kevin Healy"
+date: "21/05/2021"
+output: html_document
+---
+
+
+
+
+```{r packages, tidy = TRUE, results = "hide"}
+
+require(mulTree)
+
+library(devtools)
+library(MASS)
+library(phytools)
+library(caper)
+library(taxize)
+library(fishtree)
+library(rotl)
+library(phangorn)
+```
+
+Lets also load some functions that we built specifically for this analysis 
+The phylo_bind_functions script has functions to build the phylogenies and include error in the nodes joining together trees.
+
+```{r load additional functions, include=TRUE}
+
+source("phylo_bind_functions.R")
+
+```
+
+
+
+Read in the data
+
+```{r setup, include=FALSE}
+
+cff_raw <- read.csv("Cff_main_data__19_11_2020.csv", 
+                    header = T,
+                    sep = ",")
+
+ #cff_raw[cff_raw$mode_of_life == "parasite",]$mode_of_life <- "pred_forage"
+
+ #cff_raw[cff_raw$mode_of_life == "scavenger",]$mode_of_life <- "pred_forage"
+
+ #cff_raw[cff_raw$mode_of_life == "herbivore",]$mode_of_life <- "pred_forage"
+
+
+ #cff_raw[cff_raw$Habitat == "marine_reef",]$Habitat <- "demersal"
+
+ #cff_raw[cff_raw$Habitat == "bathypelagic",]$Habitat <- "pelagic"
+
+
+
+cff_raw$mode_of_life <- factor(cff_raw$mode_of_life, 
+                                  levels = c("pred_forage",   
+                                             "deposite", 
+                                             "pred_ballistic",   
+                                              "scavenger",  
+                                             "pred_pursuit"
+                                              ,"herbivore"
+                                             #,"parasite"
+                                             ))
+
+
+cff_raw$Habitat <- factor(cff_raw$Habitat, 
+                                  levels = c("terrestrial",   
+                                             "pelagic", 
+                                             "demersal",   
+                                             "marine_reef",
+                                             "bathypelagic",
+                                             "volant",
+                                             "arboreal",
+                                             "benthopelagic"
+                                             ))
+  
+ 
+cff_clean_no_syn <- cff_raw[,c("Scientific_name",
+                        "taxa_group",
+                        "taxa_phyla",
+                        "taxa_class",
+                        "Light_Level",
+                        "Method",
+                        "Max_CFF_Hz",
+                        "Bodymass.g.",
+                        "Habitat",
+                        "mode_of_life")]
+ 
+cff_clean_no_syn <- na.omit(cff_clean_no_syn)
+
+```
+
+
+
+#Rename some species names to match the tree
+
+```{r setup, include=FALSE}
+
+
+cff_clean <- cff_clean_no_syn
+
+#Acromegalomma_vesiculosum to Branchiomma_vesiculosum
+cff_clean[cff_clean$Scientific_name == "Acromegalomma_vesiculosum", "Scientific_name"] <- "Branchiomma_vesiculosum"
+
+#Anisoptera, which is an infroorder of dragonflies to be represented by Sympetrum_flaveolum_ott906647
+cff_clean[cff_clean$Scientific_name == "Anisoptera", "Scientific_name"] <- "Sympetrum_flaveolum"
+
+
+#anolis_carolinensis to Anolis_carolinensis
+cff_clean[cff_clean$Scientific_name == "anolis_carolinensis", "Scientific_name"] <- "Anolis_carolinensis"
+
+
+#anolis_limifrons to Anolis_limifrons
+cff_clean[cff_clean$Scientific_name == "anolis_limifrons", "Scientific_name"] <- "Anolis_limifrons"
+
+
+#anolis_sagrei to Anolis_sagrei
+cff_clean[cff_clean$Scientific_name == "anolis_sagrei", "Scientific_name"] <- "Anolis_sagrei"
+
+
+#anolis_valencienni to Anolis_valencienni
+cff_clean[cff_clean$Scientific_name == "anolis_valencienni", "Scientific_name"] <- "Anolis_valencienni"
+
+
+#cyanistes_caeruleus to Cyanistes_caeruleus
+cff_clean[cff_clean$Scientific_name == "cyanistes_caeruleus", "Scientific_name"] <- "Cyanistes_caeruleus"
+
+
+#Gekko_gekko to Gekko_gecko
+cff_clean[cff_clean$Scientific_name == "Gekko_gekko", "Scientific_name"] <- "Gekko_gecko"
+
+
+#Janicella_spinacauda to Janicella_spinicauda
+cff_clean[cff_clean$Scientific_name == "Janicella_spinacauda", "Scientific_name"] <- "Janicella_spinicauda"
+
+
+#Lycosa_baltimoriana to Lycosa_beihaiensis
+cff_clean[cff_clean$Scientific_name == "Lycosa_baltimoriana", "Scientific_name"] <- "Lycosa_beihaiensis"
+
+
+#Nematobrachian_boopis to Nematobrachion_boopis
+cff_clean[cff_clean$Scientific_name == "Nematobrachian_boopis", "Scientific_name"] <- "Nematobrachion_boopis"
+
+#Nematobrachion_sexpinosus to Nematobrachion_sexspinosum
+cff_clean[cff_clean$Scientific_name == "Nematobrachion_sexpinosus", "Scientific_name"] <- "Nematobrachion_sexspinosum"
+
+
+#Apis_mellifera, to Apis_mellifera_mellifera_ott13206
+cff_clean[cff_clean$Scientific_name == "Apis_mellifera", "Scientific_name"] <- "Apis_mellifera_mellifera"
+
+#Axcanthaster_planci, to Acanthaster_planci_ott926817
+cff_clean[cff_clean$Scientific_name == "Axcanthaster_planci", "Scientific_name"] <- "Acanthaster_planci"
+
+#Periplaneta_americano, to Periplaneta_americana
+cff_clean[cff_clean$Scientific_name == "Periplaneta_americano", "Scientific_name"] <- "Periplaneta_americana"
+
+
+#salmo_salar, to Salmo_salar
+cff_clean[cff_clean$Scientific_name == "salmo_salar", "Scientific_name"] <- "Salmo_salar"
+
+#Rynchophorus_ferrugineus, to Rhynchophorus_ferrugineus
+cff_clean[cff_clean$Scientific_name == "Rynchophorus_ferrugineus", "Scientific_name"] <- "Rhynchophorus_ferrugineus"
+
+
+#xiphias_gladius, to Xiphias_gladius
+cff_clean[cff_clean$Scientific_name == "xiphias_gladius", "Scientific_name"] <- "Xiphias_gladius"
+
+
+#Calliphoridae, which is all blowflies to be represented by Chrysomya_megacephala
+cff_clean[cff_clean$Scientific_name == "Calliphoridae", "Scientific_name"] <- "Chrysomya_megacephala"
+
+
+#Change Canis_lupus_familiaris to Canis_lupus
+cff_clean[cff_clean$Scientific_name == "Canis_lupus_familiaris", "Scientific_name"] <- "Canis_lupus"
+
+
+#Change Gallus_gallus_domesticus to Gallus_gallus
+cff_clean[cff_clean$Scientific_name == "Gallus_gallus_domesticus", "Scientific_name"] <- "Gallus_gallus"
+
+
+#Change Iguana_Iguana to Iguana_iguana
+cff_clean[cff_clean$Scientific_name == "Iguana_Iguana", "Scientific_name"] <- "Iguana_iguana"
+
+
+#Change locusta_migratoria to Locustaevora_migratoriae
+cff_clean[cff_clean$Scientific_name == "locusta_migratoria", "Scientific_name"] <- "Locustaevora_migratoriae"
+
+#Change Raja_erinacea to Leucoraja_erinacea
+cff_clean[cff_clean$Scientific_name == "Raja_erinacea", "Scientific_name"] <- "Leucoraja_erinacea"
+
+
+```
+
+Lets now upload each of the phylogenies we are going to use to build our super-dooper tree.
+We used the Metazoan phylogeny from the Open Tree of Life project (https://ot39.opentreeoflife.org/opentree/argus/opentree10.4@ott93302)  as a backbone. For Mammals we used a distribution of 100 trees from Kuhn et al 2011. For Aves we used the Jetz et al 2012 distribution of trees. For lizards we used the Pyron et al 2014 phylogeny.
+
+For our analysis we will use a distribution of 100 supertrees, however as many of the trees will not be suitable (for example, when first apperance fossil ranges overlap between nodes resulting in negative distances for certain topologies.)
+
+*Please note that as the seperate phylogenies are too large to host on Github they will need to be downloaded seperately from there sources. However, we do include the output distribution of trees (COMADRE_100_phylo_feb_2019.tre) that is the result of this script within the repository.
+
+
+```{r load trees, include=TRUE, warning = FALSE}
+
+setwd("/Users/kh214/Desktop/Phlyogenies")
+
+#Metazoan backbone
+met_tree <- read.tree("metazoa.tre")
+met_tree  <- makeLabel(met_tree) 
+met_tree <- drop.tip(met_tree,"Homo_sapiens")
+
+met_tree$node.label<-NULL
+
+#Mammal phylogeny
+mammal_phy <- read.nexus("FritzTree.rs200k.100trees.tre")
+
+#Aves phylogeny
+aves_phy <- read.tree("BirdzillaHackett10.tre")
+
+#Lizard phylogeny
+Lizard_phy <- read.tree("liz_and_snake_time_tree.txt")
+lizard_phy<-makeLabel(Lizard_phy)
+#this removes the node lables which can cause dublicate problems
+lizard_phy$node.label<-NULL
+
+
+#amphiban phylo
+amph_phy <- read.tree("Amphi.tre")
+#this removes the node lables which can cause dublicate problems
+amph_phy$node.label<-NULL
+
+
+#Shark
+shark_phy <- read.nexus("Shark_10.cal.tree.nex")
+
+
+# lets also set the number of trees we will build. 
+# As we will have to drop trees due to the inclusion of uncertinatly in node age 
+# creating trees that dont corresponse with the structure of our backbone phylogeny
+# we need to more than 100
+sample.no <- 300
+
+
+setwd("/Users/kh214/Desktop/GitHub/CFF_full_animal")
+```
+
+
+Now lets creat some super trees. First we join birds and squmatat together
+
+To link these trees to the common ancestor of Lepidosauria we used a range of 259-285 Myr from Jones et al 2013 
+
+```{r join aves and squamata, include=TRUE, warning = FALSE}
+
+bird_lizard_o <- jiggle.bind(x = aves_phy, 
+                               y = lizard_phy, 
+                               sample = 300, 
+                               min.age = 259, 
+                               max.age = 285)
+
+bird_lizard <- bird_lizard_o[[1]]
+bird_lizard__node <- bird_lizard_o[[2]]
+class(bird_lizard) <- "multiPhylo"
+
+```
+
+
+
+For the common ancestor of amniotes, we used the fossil Archerpeton anthracos (Holotype: RM 12056, Author: Carroll 1964, Reisz and Müller, Epoch: Westphalian A Canada Nova Scotia, Age: 318.1 – 314.6 Myr, Dating: International Commission on Stratigraphy 2009)
+
+```{r join aves and squamata to mammals, include=TRUE, warning = FALSE}
+
+
+amniote_tree_o <- jiggle.bind(x = bird_lizard, 
+                             y = mammal_phy, 
+                             sample = sample.no, 
+                             min.age = 314.6, 
+                             max.age = 318.1)
+
+
+amniote_tree <- amniote_tree_o[[1]]
+amniote_node <- amniote_tree_o[[2]]
+class(amniote_tree) <- "multiPhylo"
+
+```
+
+
+
+```{r join amniotes to amphibians, include=TRUE, warning = FALSE}
+
+
+amni_amphi_tree_o <- jiggle.bind(x = amniote_tree, 
+                             y = amph_phy, 
+                             sample = sample.no, 
+                             min.age = 359.2, 
+                             max.age = 359.2)
+
+
+amni_amphi_tree <- amni_amphi_tree_o[[1]]
+amni_amphi_node <- amni_amphi_tree_o[[2]]
+class(amni_amphi_tree) <- "multiPhylo"
+
+```
+
+
+
+Next we add fish
+
+
+```{r join tetrapods to fish, include=TRUE, warning = FALSE}
+
+fish_data <- cff_clean[cff_clean$taxa_phyla %in% c("fish"),]
+fish_data <- data.frame(fish_data, species_match = fish_data$Scientific_name )
+
+
+w_fish_tree <- fishtree_phylogeny(type = c("chronogram"))
+
+
+fish_tree <- comparative.data(phy = w_fish_tree, 
+                              data = fish_data, 
+                              names.col = "species_match" , 
+                              force.root = TRUE)$phy
+
+
+##Need to get a sensable split. age should be at lungfish or somerthing
+#tree_fish $edge.length <- tree_fish $edge.length*418.5
+
+
+fish_tetrapod_tree_o <- jiggle.bind(x = amni_amphi_tree, 
+                                    y = fish_tree, 
+                                    sample = sample.no, 
+                                    min.age = 419, 
+                                    max.age = 419)
+
+
+fish_tetrapod_tree <- fish_tetrapod_tree_o[[1]]
+fish_tetrapod_node <- fish_tetrapod_tree_o[[2]]
+class(fish_tetrapod_tree) <- "multiPhylo"
+
+```
+
+Next we add sharks
+
+
+```{r join tetrapods to fish, include=TRUE, warning = FALSE}
+
+shark_data <- cff_clean[cff_clean$taxa_phyla %in% c("elasmo"),]
+shark_data <- data.frame(shark_data, species_match = shark_data$Scientific_name )
+
+shark_tree <- list()
+for(i in 1:sample.no){
+shark_tree[[i]] <- comparative.data(phy = shark_phy[[i]], 
+                              data = shark_data, 
+                              names.col = "species_match" , 
+                              force.root = TRUE)$phy
+}
+
+class(shark_tree) <- "multiPhylo"
+
+##Need to get a sensable split. for sharks
+
+shark_fish_tree_o <- jiggle.bind(x = fish_tetrapod_tree, 
+                                    y = shark_tree, 
+                                    sample = sample.no, 
+                                    min.age = 420, 
+                                    max.age = 420)
+
+
+shark_fish_tree <- shark_fish_tree_o[[1]]
+shark_fish_tree_node <- shark_fish_tree_o[[2]]
+class(shark_fish_tree) <- "multiPhylo"
+
+```
+
+
+
+No add in the inverr groups.
+For the common ancestor between deuterostomes and protostomes we use the date of 555-558 Myr for the fossil Kimberella quadrata (Holotype: PI 2734, Fedonkin et al 2007, Epoch: Ediacarn, Formation; South Australia). 
+
+```{r join verts to inverts, include=TRUE, warning = FALSE}
+
+invert_data <- cff_clean[cff_clean$taxa_group == "invert",]
+
+met_tree2 <- met_tree
+
+for(i in 1:(length(invert_data$Scientific_name))){
+  
+  met_tree2$tip.label[grep(invert_data$Scientific_name[i],met_tree2$tip.label)] <- sub("_ott.*", "",met_tree$tip.label[grep(invert_data$Scientific_name[i],met_tree$tip.label)])
+  
+}
+
+#12 species need to be fixed
+invert_tree <- comparative.data(phy = met_tree2, 
+                              data = invert_data, 
+                              names.col = "Scientific_name" , 
+                              force.root = TRUE)
+
+invert_tree_ult <-compute.brlen(invert_tree$phy, 
+                          method = "Grafen", 
+                          power = 1)
+
+##Need to get a sensable split. age should be at lungfish or somerthing
+invert_tree_ult$edge.length <- invert_tree_ult $edge.length*550
+
+
+
+bi_lat_tree_o <- jiggle.bind(x = invert_tree_ult, 
+                                    y = shark_fish_tree, 
+                                    sample = sample.no, 
+                                    min.age = 555, 
+                                    max.age = 558)
+
+
+bi_lat_tree <- bi_lat_tree_o[[1]]
+bi_lat_node <- bi_lat_tree_o[[2]]
+class(bi_lat_tree) <- "multiPhylo"
+
+```
+
+
+
+
+```{r building the final trees, include=TRUE, warning = FALSE}
+
+final_tree<- list()
+for(i in 1:(length(bi_lat_tree))){
+
+  #bi_lat_tree[[i]] <- drop.tip(bi_lat_tree[[i]], "Homo_sapiens")
+  bi_lat_tree[[i]]$node.label = "NA"
+
+  
+  }
+
+
+
+##Now we clean each of the trees so it only has the species from the dataset in
+##it
+for(i in 1:(length(bi_lat_tree))){
+  
+  final_tree[[i]] <- comparative.data(phy = bi_lat_tree[[i]], 
+                                      data = cff_clean, 
+                                      names.col = "Scientific_name", 
+                                      force.root = TRUE)$phy
+}
+
+
+
+
+```
+

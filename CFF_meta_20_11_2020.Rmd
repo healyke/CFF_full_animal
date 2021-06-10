@@ -1,0 +1,495 @@
+---
+title: "New_cff"
+author: "Kevin Healy"
+date: "17/11/2020"
+output: html_document
+---
+
+
+
+```{r packages, tidy = TRUE, results = "hide"}
+
+library(phytools)
+library(caper)
+library(MCMCglmm)
+library(hdrcde)
+source("MultiDisPlot.R")
+```
+
+
+Read in the data
+
+```{r setup, include=FALSE}
+
+cff_raw <- read.csv("Cff_main_data__19_11_2020.csv", 
+                    header = T,
+                    sep = ",")
+
+ #cff_raw[cff_raw$mode_of_life == "parasite",]$mode_of_life <- "pred_forage"
+
+ #cff_raw[cff_raw$mode_of_life == "scavenger",]$mode_of_life <- "pred_forage"
+
+ #cff_raw[cff_raw$mode_of_life == "herbivore",]$mode_of_life <- "pred_forage"
+
+
+ #cff_raw[cff_raw$Habitat == "marine_reef",]$Habitat <- "demersal"
+
+ #cff_raw[cff_raw$Habitat == "bathypelagic",]$Habitat <- "pelagic"
+
+
+
+cff_raw$mode_of_life <- factor(cff_raw$mode_of_life, 
+                                  levels = c("pred_forage",   
+                                             "deposite", 
+                                             "pred_ballistic",   
+                                              "scavenger",  
+                                             "pred_pursuit"
+                                              ,"herbivore"
+                                             #,"parasite"
+                                             ))
+
+
+cff_raw$Habitat <- factor(cff_raw$Habitat, 
+                                  levels = c("terrestrial",   
+                                             "pelagic", 
+                                             "demersal",   
+                                             "marine_reef",
+                                             "bathypelagic",
+                                             "volant",
+                                             "arboreal",
+                                             "benthopelagic"
+                                             ))
+  
+ 
+cff_clean <- cff_raw[,c("Scientific_name",
+                        "taxa_group",
+                        "taxa_phyla",
+                        "taxa_class",
+                        "Light_Level",
+                        "Method",
+                        "Max_CFF_Hz",
+                        "Bodymass.g.",
+                        "Habitat",
+                        "mode_of_life")]
+ 
+cff_clean <- na.omit(cff_clean)
+
+```
+
+
+
+
+
+analysis
+
+
+##Set the parameters
+Here we set the number of iterations, the thinning and the burn-in
+
+```{r parameters}
+
+#nitt <- 1200000
+#thin <- 500
+#burnin <- 200000
+
+nitt <- 12000
+thin <- 5
+burnin <- 2000
+
+```
+
+
+
+##Set the prior
+
+Set the proir. Here we stick with a x prior.
+
+```{r prior}
+prior <-list(R = list(V = 1, nu=0.002), 
+             G = list(G1=list(V = 1,n = 2, 
+                              alpha.mu= 0, 
+                              alpha.V = 10^3)
+                     ))
+
+
+```
+
+
+
+```{r glm, include=FALSE}
+
+
+full_model_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+                                  + mode_of_life
+                                  + Habitat         
+                         ,
+                         random = ~ taxa_phyla,
+                         rcov=~ units, 
+                         data = cff_clean, 
+                         #pedigree = max.tree, 
+                         prior = prior,
+                         family=c("gaussian"), 
+                         nitt = nitt, thin = thin, burnin = burnin,
+                         verbose= FALSE)
+
+summary(full_model_1)
+
+
+
+```
+
+
+plot total
+```{r glm, include=FALSE}
+
+plot(cff_raw$Max_CFF_Hz ~ log10(cff_raw$Bodymass.g.),
+     
+     col = "white",
+     pch = 16,
+     bty = "n")
+
+points(cff_raw[cff_raw$Light_Level == "low", "Max_CFF_Hz"] ~ log10(cff_raw[cff_raw$Light_Level == "low", "Bodymass.g."]),
+       col = "lightblue",
+       pch= 16)
+
+points(cff_raw[cff_raw$Light_Level == "high", "Max_CFF_Hz"] ~ log10(cff_raw[cff_raw$Light_Level == "high", "Bodymass.g."]),
+       col = "orange",
+       pch= 16)
+
+
+##high light
+abline(summary(full_model_1)$solutions[1], summary(full_model_1)$solutions[2],
+       col = "orange",
+       lty = 4,
+       lwd = 3)
+
+##low light
+abline(summary(full_model_1)$solutions[1] + summary(full_model_1)$solutions[3], 
+       summary(full_model_1)$solutions[2] + summary(full_model_1)$solutions[4],
+       col = "lightblue",
+       lty = 4,
+       lwd = 3)
+
+
+
+```
+
+
+
+
+
+
+
+##terrestrial
+
+```{r glm, include=FALSE}
+
+cff_t <- cff_clean[cff_clean$Habitat %in% c("volant", 
+                                        "terrestrial",
+                                        "arboreal"),]
+
+#cff_t[cff_t$Habitat == "arboreal",]$Habitat <- "terrestrial"
+
+
+#cff_t$Habitat <- factor(cff_t$Habitat, 
+#                                  levels = c("terrestrial",   
+#                                             "volant"
+#                                             ))
+
+cff_t$Habitat <- factor(cff_t$Habitat, 
+                                  levels = c("terrestrial",   
+                                             "volant", 
+                                             "arboreal"))
+
+
+
+
+
+
+full_ter_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+                                  + mode_of_life
+                                  + Habitat,
+                         random = ~ taxa_phyla,
+                         rcov=~ units, 
+                         data = cff_t, 
+                         #pedigree = max.tree, 
+                         prior = prior,
+                         family=c("gaussian"), 
+                         nitt = nitt, thin = thin, burnin = burnin,
+                         verbose= FALSE)
+
+
+summary(full_ter_1)
+
+```
+
+
+
+
+plot main terrestrial
+```{r glm, include=FALSE}
+
+
+plot(cff_t[, "Max_CFF_Hz"] ~ log10(cff_t[, "Bodymass.g."]),
+       col = "white",
+       pch= 16,
+     bty = "n")
+
+points(cff_t[cff_t$Light_Level == "low", "Max_CFF_Hz"] ~ log10(cff_t[cff_t$Light_Level == "low", "Bodymass.g."]),
+       col = "lightblue",
+       pch= 16)
+
+
+points(cff_t[cff_t$Light_Level == "high", "Max_CFF_Hz"] ~ log10(cff_t[cff_t$Light_Level == "high", "Bodymass.g."]),
+       col = "orange",
+       pch= 16)
+
+##high light
+abline(summary(full_ter_1)$solutions[1], summary(full_ter_1)$solutions[2],
+       col = "orange",
+       lty = 4,
+       lwd = 3)
+
+##low light
+abline(summary(full_ter_1)$solutions[1] + summary(full_ter_1)$solutions[3], 
+       summary(full_ter_1)$solutions[2] + summary(full_model_1)$solutions[16],
+       col = "lightblue",
+       lty = 4,
+       lwd = 3)
+
+
+```
+
+
+
+plot volant terrestrial
+```{r glm, include=FALSE}
+
+
+plot(cff_t[, "Max_CFF_Hz"] ~ log10(cff_t[, "Bodymass.g."]),
+       col = "white",            
+        cex = 1.3,
+       pch= 16,
+     bty = "n")
+
+
+
+points(cff_t[cff_t$Light_Level == "low", "Max_CFF_Hz"] ~ log10(cff_t[cff_t$Light_Level == "low", "Bodymass.g."]),
+       col = "lightblue",
+       pch= 16)
+
+
+points(cff_t[cff_t$Light_Level == "high", "Max_CFF_Hz"] ~ log10(cff_t[cff_t$Light_Level == "high", "Bodymass.g."]),
+       col = "orange",
+       pch= 16)
+
+points(cff_t[cff_t$Habitat == "volant", "Max_CFF_Hz"] ~ log10(cff_t[cff_t$Habitat == "volant", "Bodymass.g."]),
+       col = "white",
+       cex = 0.7,
+       pch= 16)
+
+
+
+##high light
+abline(summary(full_ter_1)$solutions[1], summary(full_ter_1)$solutions[2],
+       col = "orange",
+       lty = 4,
+       lwd = 3)
+
+##low light
+abline(summary(full_ter_1)$solutions[1] + summary(full_ter_1)$solutions[3], 
+       summary(full_ter_1)$solutions[2] + summary(full_model_1)$solutions[16],
+       col = "lightblue",
+       lty = 4,
+       lwd = 3)
+
+
+
+```
+
+
+
+
+plot ballistic terrestrial
+```{r glm, include=FALSE}
+
+
+plot(cff_t[, "Max_CFF_Hz"] ~ log10(cff_t[, "Bodymass.g."]),
+       col = "white",            
+        cex = 1.3,
+       pch= 16,
+     bty = "n")
+
+
+
+points(cff_t[cff_t$Light_Level == "low", "Max_CFF_Hz"] ~ log10(cff_t[cff_t$Light_Level == "low", "Bodymass.g."]),
+       col = "lightblue",
+       pch= 16)
+
+
+points(cff_t[cff_t$Light_Level == "high", "Max_CFF_Hz"] ~ log10(cff_t[cff_t$Light_Level == "high", "Bodymass.g."]),
+       col = "orange",
+       pch= 16)
+
+points(cff_t[cff_t$mode_of_life == "pred_ballistic", "Max_CFF_Hz"] ~ log10(cff_t[cff_t$mode_of_life == "pred_ballistic", "Bodymass.g."]),
+       col = "lightyellow1",
+       cex = 0.7,
+       pch= 16)
+
+
+
+##high light
+abline(summary(full_ter_1)$solutions[1], summary(full_ter_1)$solutions[2],
+       col = "orange",
+       lty = 4,
+       lwd = 3)
+
+##low light
+abline(summary(full_ter_1)$solutions[1] + summary(full_ter_1)$solutions[3], 
+       summary(full_ter_1)$solutions[2] + summary(full_model_1)$solutions[16],
+       col = "lightblue",
+       lty = 4,
+       lwd = 3)
+
+
+
+```
+
+
+
+
+
+
+##Marine analysis
+
+
+```{r glm, include=FALSE}
+
+cff_m <- cff_clean[cff_clean$Habitat %in% c("pelagic", 
+                                        "demersal",
+                                        "marine_reef",
+                                        "benthopelagic"
+                                        ,"bathypelagic"
+                                        ),]
+
+cff_m$Habitat <- factor(cff_m$Habitat, 
+                                  levels = c("demersal",
+                                             "pelagic", 
+                                        "marine_reef",
+                                        "benthopelagic",
+                                         "bathypelagic"
+                                        ))
+
+
+full_mar_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+                                  + mode_of_life
+                                  + Habitat
+                       ,
+                         random = ~ taxa_phyla,
+                         rcov=~ units, 
+                         data = cff_m, 
+                         #pedigree = max.tree, 
+                         prior = prior,
+                         family=c("gaussian"), 
+                         nitt = nitt, thin = thin, burnin = burnin,
+                         verbose= FALSE)
+
+summary(full_mar_1)
+
+```
+
+
+
+
+plot marine
+```{r glm, include=FALSE}
+
+
+
+plot(cff_m[, "Max_CFF_Hz"] ~ log10(cff_m[, "Bodymass.g."]),
+       col = "white",            
+        cex = 1.3,
+       pch= 16,
+     bty = "n")
+
+
+points(cff_m[cff_m$Light_Level == "high", "Max_CFF_Hz"] ~ log10(cff_m[cff_m$Light_Level == "high", "Bodymass.g."]),
+       col = "orange",
+       pch= 16)
+
+points(cff_m[cff_m$Light_Level == "low", "Max_CFF_Hz"] ~ log10(cff_m[cff_m$Light_Level == "low", "Bodymass.g."]),
+       col = "lightblue",
+       pch= 16)
+
+##high light
+abline(summary(full_mar_1)$solutions[1] + 15.3539, summary(full_mar_1)$solutions[2],
+       col = "orange",
+       lty = 4,
+       lwd = 3)
+
+##low light
+abline(summary(full_mar_1)$solutions[1] + summary(full_mar_1)$solutions[3] +15.3539, 
+       summary(full_mar_1)$solutions[2] + summary(full_mar_1)$solutions[12],
+       col = "lightblue",
+       lty = 4,
+       lwd = 3)
+
+
+```
+
+
+
+
+plot marine
+```{r glm, include=FALSE}
+
+
+
+plot(cff_m[, "Max_CFF_Hz"] ~ log10(cff_m[, "Bodymass.g."]),
+       col = "white",            
+        cex = 1.3,
+       pch= 16,
+     bty = "n")
+
+
+points(cff_m[cff_m$Light_Level == "high", "Max_CFF_Hz"] ~ log10(cff_m[cff_m$Light_Level == "high", "Bodymass.g."]),
+       col = "orange",
+       pch= 16)
+
+points(cff_m[cff_m$Light_Level == "low", "Max_CFF_Hz"] ~ log10(cff_m[cff_m$Light_Level == "low", "Bodymass.g."]),
+       col = "lightblue",
+       pch= 16)
+
+
+
+points(cff_m[cff_m$mode_of_life == "pred_ballistic", "Max_CFF_Hz"] ~ log10(cff_m[cff_m$mode_of_life == "pred_ballistic", "Bodymass.g."]),
+       col = "wh",
+       cex = 0.7,
+       pch= 16)
+
+
+points(cff_m[cff_m$mode_of_life == "pred_pursuit", "Max_CFF_Hz"] ~ log10(cff_m[cff_m$mode_of_life == "pred_pursuit", "Bodymass.g."]),
+       col = "black",
+       cex = 1.1,
+       pch= 16)
+
+
+##high light
+abline(summary(full_mar_1)$solutions[1] + 15.3539, summary(full_mar_1)$solutions[2],
+       col = "orange",
+       lty = 4,
+       lwd = 3)
+
+##low light
+abline(summary(full_mar_1)$solutions[1] + summary(full_mar_1)$solutions[3] +15.3539, 
+       summary(full_mar_1)$solutions[2] + summary(full_mar_1)$solutions[12],
+       col = "lightblue",
+       lty = 4,
+       lwd = 3)
+
+
+```
+
+
+
+
