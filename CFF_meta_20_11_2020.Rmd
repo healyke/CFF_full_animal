@@ -21,9 +21,11 @@ Read in the data
 
 ```{r setup, include=FALSE}
 
-cff_raw <- read.csv("Cff_main_data__19_11_2020.csv", 
+cff_raw <- read.csv("final_cff_data.csv", 
                     header = T,
                     sep = ",")
+
+colnames(cff_raw)[1] <- "Scientific_name"
 
  #cff_raw[cff_raw$mode_of_life == "parasite",]$mode_of_life <- "pred_forage"
 
@@ -72,15 +74,39 @@ cff_clean <- cff_raw[,c("Scientific_name",
                         "Habitat",
                         "mode_of_life")]
  
+cff_clean <- data.frame(cff_clean, animal = cff_clean$Scientific_name)
+
 cff_clean <- na.omit(cff_clean)
 
 ```
 
 
+Read in the phylogeny.
+
+```{r phylo, include=FALSE}
+
+cff_tree <- read.tree("cff_tree.tree")
+
+cff_tree <- cff_tree[1:100]
 
 
+```
 
-analysis
+
+#MulTree
+Set the data into a Multree object.
+
+```{r Multree data, include=FALSE}
+
+cff_mul <- as.mulTree(cff_clean, 
+                      cff_tree, 
+                      taxa = "animal", 
+                      rand.terms = ~animal,
+                      clean.data = FALSE)
+
+
+```
+
 
 
 ##Set the parameters
@@ -88,16 +114,19 @@ Here we set the number of iterations, the thinning and the burn-in
 
 ```{r parameters}
 
-#nitt <- 1200000
-#thin <- 500
-#burnin <- 200000
+nitt <- 120000
+thin <- 50
+burnin <- 20000
 
-nitt <- 12000
-thin <- 5
-burnin <- 2000
+parameters <- c(nitt,
+                thin,
+                burnin)
+
+#nitt <- 12000
+#thin <- 5
+#burnin <- 2000
 
 ```
-
 
 
 ##Set the prior
@@ -119,24 +148,75 @@ prior <-list(R = list(V = 1, nu=0.002),
 ```{r glm, include=FALSE}
 
 
-full_model_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+mulTree(mulTree.data = cff_mul, 
+        formula = Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
                                   + mode_of_life
-                                  + Habitat         
-                         ,
-                         random = ~ taxa_phyla,
-                         rcov=~ units, 
-                         data = cff_clean, 
-                         #pedigree = max.tree, 
-                         prior = prior,
-                         family=c("gaussian"), 
-                         nitt = nitt, thin = thin, burnin = burnin,
-                         verbose= FALSE)
+                                  + Habitat 
+        , parameters = parameters, 
+        chains = 2,
+        priors = prior,
+        convergence = 1.1, 
+        ESS = 1000, 
+        verbose = TRUE,
+        output = "mulTree_models", 
+        warn = FALSE, 
+        ask = TRUE)
 
-summary(full_model_1)
 
+#full_model_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+#                                  + mode_of_life
+#                                  + Habitat         
+#                         ,
+#                         random = ~ animal,
+#                         rcov=~ units, 
+#                         data = cff_clean, 
+#                         pedigree = cff_tree[[1]], 
+#                         prior = prior,
+#                         family=c("gaussian"), 
+#                         nitt = nitt, thin = thin, burnin = burnin,
+#                         verbose= FALSE)
+
+#summary(full_model_1)
+
+```
+
+#Read in the multiple runs
+
+
+```{r glm, include=FALSE}
+
+Main_models <-   read.mulTree(mulTree.chain = "mulTree_models", 
+                              convergence = FALSE, 
+                              model = FALSE,
+                              extract = NULL)
+
+
+inter_main_p <-  hdr(Main_models$`(Intercept)`)
+mass_log10_main_p <-  hdr(Main_models$`log10(Bodymass.g.)`)
+lit_low_main_p <-  hdr(Main_models$Light_Levellow)
+deposite_main_p <-  hdr(Main_models$mode_of_lifedeposite)
+ballistic_main_p <-  hdr(Main_models$mode_of_lifepred_ballistic)
+scav_main_p <-  hdr(Main_models$mode_of_lifescavenger)
+pur_main_p <-  hdr(Main_models$mode_of_lifepred_pursuit)
+herb_main_p <-  hdr(Main_models$mode_of_lifeherbivore)
+pel_main_p <-  hdr(Main_models$Habitatpelagic)
+dem_main_p <-  hdr(Main_models$Habitatdemersal)
+reef_main_p <-  hdr(Main_models$Habitatmarine_reef)
+bath_main_p <-  hdr(Main_models$Habitatbathypelagic)
+vol_main_p <-  hdr(Main_models$Habitatvolant)
+arb_main_p <-  hdr(Main_models$Habitatarboreal)
+bentpelagic_main_p <-  hdr(Main_models$Habitatbenthopelagic)
+body_lit_inter_main_p <-  hdr(Main_models$`log10(Bodymass.g.):Light_Levellow`)
+
+phylo_main_p <-  hdr(Main_models$phylogenetic.variance)
+
+H_main <- Main_models$phylogenetic.variance/c(Main_models$phylogenetic.variance + Main_models$residual.variance)
+  
+unit_main_p <-  hdr(Main_models$residual.variance)
 
 
 ```
+
 
 
 plot total
@@ -146,7 +226,9 @@ plot(cff_raw$Max_CFF_Hz ~ log10(cff_raw$Bodymass.g.),
      
      col = "white",
      pch = 16,
-     bty = "n")
+     bty = "n",
+     ylab = "CFF (Hz)",
+     xlab = "log10 of Mass (g)")
 
 points(cff_raw[cff_raw$Light_Level == "low", "Max_CFF_Hz"] ~ log10(cff_raw[cff_raw$Light_Level == "low", "Bodymass.g."]),
        col = "lightblue",
@@ -157,15 +239,21 @@ points(cff_raw[cff_raw$Light_Level == "high", "Max_CFF_Hz"] ~ log10(cff_raw[cff_
        pch= 16)
 
 
+points(cff_raw[cff_raw$Habitat== "volant", "Max_CFF_Hz"] ~ log10(cff_raw[cff_raw$Habitat== "volant", "Bodymass.g."]),
+       col = "white",
+       pch= 16, cex = 0.8)
+
+
+
 ##high light
-abline(summary(full_model_1)$solutions[1], summary(full_model_1)$solutions[2],
+abline(inter_main_p$mode, mass_log10_main_p$mode,
        col = "orange",
        lty = 4,
        lwd = 3)
 
 ##low light
-abline(summary(full_model_1)$solutions[1] + summary(full_model_1)$solutions[3], 
-       summary(full_model_1)$solutions[2] + summary(full_model_1)$solutions[4],
+abline(inter_main_p$mode + lit_low_main_p$mode, 
+       mass_log10_main_p$mode + body_lit_inter_main_p$mode,
        col = "lightblue",
        lty = 4,
        lwd = 3)
@@ -182,48 +270,96 @@ abline(summary(full_model_1)$solutions[1] + summary(full_model_1)$solutions[3],
 
 ##terrestrial
 
-```{r glm, include=FALSE}
+#MulTree
+Set the data into a Multree object.
+
+```{r Multree data, include=FALSE}
+
 
 cff_t <- cff_clean[cff_clean$Habitat %in% c("volant", 
                                         "terrestrial",
                                         "arboreal"),]
-
-#cff_t[cff_t$Habitat == "arboreal",]$Habitat <- "terrestrial"
-
-
-#cff_t$Habitat <- factor(cff_t$Habitat, 
-#                                  levels = c("terrestrial",   
-#                                             "volant"
-#                                             ))
 
 cff_t$Habitat <- factor(cff_t$Habitat, 
                                   levels = c("terrestrial",   
                                              "volant", 
                                              "arboreal"))
 
+cff_mul_terr <- as.mulTree(cff_t, 
+                      cff_tree, 
+                      taxa = "animal", 
+                      rand.terms = ~animal,
+                      clean.data = FALSE)
 
-
-
-
-
-full_ter_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
-                                  + mode_of_life
-                                  + Habitat,
-                         random = ~ taxa_phyla,
-                         rcov=~ units, 
-                         data = cff_t, 
-                         #pedigree = max.tree, 
-                         prior = prior,
-                         family=c("gaussian"), 
-                         nitt = nitt, thin = thin, burnin = burnin,
-                         verbose= FALSE)
-
-
-summary(full_ter_1)
 
 ```
 
 
+
+Run the terrestrial multree model
+
+```{r multre terr, include=FALSE}
+
+
+mulTree(mulTree.data = cff_mul_terr, 
+        formula = Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+                                  + mode_of_life
+                                  + Habitat,
+        parameters = parameters, 
+        chains = 2,
+        priors = prior,
+        convergence = 1.1, 
+        ESS = 1000, 
+        verbose = TRUE,
+        output = "cff_terr_models", 
+        warn = FALSE, 
+        ask = TRUE)
+
+
+#full_ter_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+#                                  + mode_of_life
+#                                  + Habitat,
+#                         random = ~ animal,
+#                         rcov=~ units, 
+#                         data = cff_t, 
+#                         pedigree = cff_tree[[1]], 
+#                         prior = prior,
+#                         family=c("gaussian"), 
+#                        nitt = nitt, thin = thin, burnin = burnin,
+#                         verbose= FALSE)
+#summary(full_ter_1)
+
+```
+
+Read in the multiple terrestrial models 
+
+```{r glm, include=FALSE}
+
+ter_models <-   read.mulTree(mulTree.chain = "cff_terr_models", 
+                              convergence = FALSE, 
+                              model = FALSE,
+                              extract = NULL)
+
+
+inter_ter_p <-  hdr(ter_models$`(Intercept)`)
+mass_log10_ter_p <-  hdr(ter_models$`log10(Bodymass.g.)`)
+lit_low_ter_p <-  hdr(ter_models$Light_Levellow)
+ballistic_ter_p <-  hdr(ter_models$mode_of_lifepred_ballistic)
+scav_ter_p <-  hdr(ter_models$mode_of_lifescavenger)
+pur_ter_p <-  hdr(ter_models$mode_of_lifepred_pursuit)
+herb_ter_p <-  hdr(ter_models$mode_of_lifeherbivore)
+vol_ter_p <-  hdr(ter_models$Habitatvolant)
+arb_ter_p <-  hdr(ter_models$Habitatarboreal)
+body_lit_inter_ter_p <-  hdr(ter_models$`log10(Bodymass.g.):Light_Levellow`)
+
+phylo_ter_p <-  hdr(ter_models$phylogenetic.variance)
+
+H_ter <- ter_models$phylogenetic.variance/c(ter_models$phylogenetic.variance + ter_models$residual.variance)
+  
+unit_ter_p <-  hdr(ter_models$residual.variance)
+
+
+```
 
 
 plot main terrestrial
@@ -245,14 +381,14 @@ points(cff_t[cff_t$Light_Level == "high", "Max_CFF_Hz"] ~ log10(cff_t[cff_t$Ligh
        pch= 16)
 
 ##high light
-abline(summary(full_ter_1)$solutions[1], summary(full_ter_1)$solutions[2],
+abline(inter_ter_p$mode, mass_log10_ter_p$mode,
        col = "orange",
        lty = 4,
        lwd = 3)
 
 ##low light
-abline(summary(full_ter_1)$solutions[1] + summary(full_ter_1)$solutions[3], 
-       summary(full_ter_1)$solutions[2] + summary(full_model_1)$solutions[16],
+abline(inter_ter_p$mode + lit_low_ter_p$mode, 
+       mass_log10_ter_p$mode + body_lit_inter_ter_p$mode,
        col = "lightblue",
        lty = 4,
        lwd = 3)
@@ -290,15 +426,16 @@ points(cff_t[cff_t$Habitat == "volant", "Max_CFF_Hz"] ~ log10(cff_t[cff_t$Habita
 
 
 
+
 ##high light
-abline(summary(full_ter_1)$solutions[1], summary(full_ter_1)$solutions[2],
+abline(inter_ter_p$mode, mass_log10_ter_p$mode,
        col = "orange",
        lty = 4,
        lwd = 3)
 
 ##low light
-abline(summary(full_ter_1)$solutions[1] + summary(full_ter_1)$solutions[3], 
-       summary(full_ter_1)$solutions[2] + summary(full_model_1)$solutions[16],
+abline(inter_ter_p$mode + lit_low_ter_p$mode, 
+       mass_log10_ter_p$mode + body_lit_inter_ter_p$mode,
        col = "lightblue",
        lty = 4,
        lwd = 3)
@@ -338,18 +475,20 @@ points(cff_t[cff_t$mode_of_life == "pred_ballistic", "Max_CFF_Hz"] ~ log10(cff_t
 
 
 
+
 ##high light
-abline(summary(full_ter_1)$solutions[1], summary(full_ter_1)$solutions[2],
+abline(inter_ter_p$mode, mass_log10_ter_p$mode,
        col = "orange",
        lty = 4,
        lwd = 3)
 
 ##low light
-abline(summary(full_ter_1)$solutions[1] + summary(full_ter_1)$solutions[3], 
-       summary(full_ter_1)$solutions[2] + summary(full_model_1)$solutions[16],
+abline(inter_ter_p$mode + lit_low_ter_p$mode, 
+       mass_log10_ter_p$mode + body_lit_inter_ter_p$mode,
        col = "lightblue",
        lty = 4,
        lwd = 3)
+
 
 
 
@@ -363,7 +502,7 @@ abline(summary(full_ter_1)$solutions[1] + summary(full_ter_1)$solutions[3],
 ##Marine analysis
 
 
-```{r glm, include=FALSE}
+```{r marine data, include=FALSE}
 
 cff_m <- cff_clean[cff_clean$Habitat %in% c("pelagic", 
                                         "demersal",
@@ -381,22 +520,83 @@ cff_m$Habitat <- factor(cff_m$Habitat,
                                         ))
 
 
-full_mar_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
-                                  + mode_of_life
-                                  + Habitat
-                       ,
-                         random = ~ taxa_phyla,
-                         rcov=~ units, 
-                         data = cff_m, 
-                         #pedigree = max.tree, 
-                         prior = prior,
-                         family=c("gaussian"), 
-                         nitt = nitt, thin = thin, burnin = burnin,
-                         verbose= FALSE)
+cff_mul_mar <- as.mulTree(cff_m, 
+                      cff_tree, 
+                      taxa = "animal", 
+                      rand.terms = ~animal,
+                      clean.data = FALSE)
 
-summary(full_mar_1)
 
 ```
+
+
+
+
+```{r marine model, include=FALSE}
+
+
+mulTree(mulTree.data = cff_mul_mar, 
+        formula = Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+                                  + mode_of_life
+                                  + Habitat,
+        parameters = parameters, 
+        chains = 2,
+        priors = prior,
+        convergence = 1.1, 
+        ESS = 1000, 
+        verbose = TRUE,
+        output = "cff_mar_models", 
+        warn = FALSE, 
+        ask = TRUE)
+
+
+#full_mar_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+#                                  + mode_of_life
+#                                  + Habitat
+#                       ,
+#                         random = ~ animal,
+#                         rcov=~ units, 
+#                         data = cff_m, 
+#                         pedigree = cff_tree[[1]], 
+#                         prior = prior,
+#                         family=c("gaussian"), 
+#                         nitt = nitt, thin = thin, burnin = burnin,
+#                         verbose= FALSE)
+#summary(full_mar_1)
+
+```
+
+
+
+Read in the multiple marine models 
+
+```{r marine read, include=FALSE}
+
+mar_models <-   read.mulTree(mulTree.chain = "cff_mar_models", 
+                              convergence = FALSE, 
+                              model = FALSE,
+                              extract = NULL)
+
+
+inter_mar_p <-  hdr(mar_models$`(Intercept)`)
+mass_log10_mar_p <-  hdr(mar_models$`log10(Bodymass.g.)`)
+lit_low_mar_p <-  hdr(mar_models$Light_Levellow)
+ballistic_mar_p <-  hdr(mar_models$mode_of_lifepred_ballistic)
+scav_mar_p <-  hdr(mar_models$mode_of_lifescavenger)
+pur_mar_p <-  hdr(mar_models$mode_of_lifepred_pursuit)
+body_lit_inter_mar_p <-  hdr(mar_models$`log10(Bodymass.g.):Light_Levellow`)
+
+phylo_mar_p <-  hdr(mar_models$phylogenetic.variance)
+
+H_mar <- mar_models$phylogenetic.variance/c(mar_models$phylogenetic.variance + mar_models$residual.variance)
+  
+unit_mar_p <-  hdr(mar_models$residual.variance)
+
+
+```
+
+
+
 
 
 
@@ -463,7 +663,7 @@ points(cff_m[cff_m$Light_Level == "low", "Max_CFF_Hz"] ~ log10(cff_m[cff_m$Light
 
 
 points(cff_m[cff_m$mode_of_life == "pred_ballistic", "Max_CFF_Hz"] ~ log10(cff_m[cff_m$mode_of_life == "pred_ballistic", "Bodymass.g."]),
-       col = "wh",
+       col = "white",
        cex = 0.7,
        pch= 16)
 
