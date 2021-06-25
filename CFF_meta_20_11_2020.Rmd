@@ -21,33 +21,33 @@ Read in the data
 
 ```{r setup, include=FALSE}
 
-cff_raw <- read.csv("final_cff_data.csv", 
+cff_raw <- read.csv("final_cff_data_21_june_2021.csv", 
                     header = T,
                     sep = ",")
 
 colnames(cff_raw)[1] <- "Scientific_name"
 
- #cff_raw[cff_raw$mode_of_life == "parasite",]$mode_of_life <- "pred_forage"
+ cff_raw[cff_raw$mode_of_life == "scavenger",]$mode_of_life <- "pred_forage"
 
- #cff_raw[cff_raw$mode_of_life == "scavenger",]$mode_of_life <- "pred_forage"
-
- #cff_raw[cff_raw$mode_of_life == "herbivore",]$mode_of_life <- "pred_forage"
+ cff_raw[cff_raw$mode_of_life == "herbivore",]$mode_of_life <- "pred_forage"
 
 
- #cff_raw[cff_raw$Habitat == "marine_reef",]$Habitat <- "demersal"
+ cff_raw[cff_raw$Habitat == "marine_reef",]$Habitat <- "demersal"
 
- #cff_raw[cff_raw$Habitat == "bathypelagic",]$Habitat <- "pelagic"
-
+cff_raw[cff_raw$Habitat == "benthopelagic",]$Habitat <- "demersal"
+ 
+ cff_raw[cff_raw$Habitat == "bathypelagic",]$Habitat <- "pelagic"
+ 
+cff_raw[cff_raw$Habitat == "arboreal",]$Habitat <- "terrestrial"
 
 
 cff_raw$mode_of_life <- factor(cff_raw$mode_of_life, 
                                   levels = c("pred_forage",   
                                              "deposite", 
                                              "pred_ballistic",   
-                                              "scavenger",  
+                                             #"scavenger",  
                                              "pred_pursuit"
-                                              ,"herbivore"
-                                             #,"parasite"
+                                            #,"herbivore"
                                              ))
 
 
@@ -55,11 +55,11 @@ cff_raw$Habitat <- factor(cff_raw$Habitat,
                                   levels = c("terrestrial",   
                                              "pelagic", 
                                              "demersal",   
-                                             "marine_reef",
-                                             "bathypelagic",
-                                             "volant",
-                                             "arboreal",
-                                             "benthopelagic"
+                                             #"marine_reef",
+                                             #"bathypelagic",
+                                             "volant"
+                                             #"arboreal"
+                                             #"benthopelagic"
                                              ))
   
  
@@ -196,16 +196,16 @@ mass_log10_main_p <-  hdr(Main_models$`log10(Bodymass.g.)`)
 lit_low_main_p <-  hdr(Main_models$Light_Levellow)
 deposite_main_p <-  hdr(Main_models$mode_of_lifedeposite)
 ballistic_main_p <-  hdr(Main_models$mode_of_lifepred_ballistic)
-scav_main_p <-  hdr(Main_models$mode_of_lifescavenger)
+#scav_main_p <-  hdr(Main_models$mode_of_lifescavenger)
 pur_main_p <-  hdr(Main_models$mode_of_lifepred_pursuit)
-herb_main_p <-  hdr(Main_models$mode_of_lifeherbivore)
+#herb_main_p <-  hdr(Main_models$mode_of_lifeherbivore)
 pel_main_p <-  hdr(Main_models$Habitatpelagic)
 dem_main_p <-  hdr(Main_models$Habitatdemersal)
-reef_main_p <-  hdr(Main_models$Habitatmarine_reef)
-bath_main_p <-  hdr(Main_models$Habitatbathypelagic)
+#reef_main_p <-  hdr(Main_models$Habitatmarine_reef)
+#bath_main_p <-  hdr(Main_models$Habitatbathypelagic)
 vol_main_p <-  hdr(Main_models$Habitatvolant)
 arb_main_p <-  hdr(Main_models$Habitatarboreal)
-bentpelagic_main_p <-  hdr(Main_models$Habitatbenthopelagic)
+#bentpelagic_main_p <-  hdr(Main_models$Habitatbenthopelagic)
 body_lit_inter_main_p <-  hdr(Main_models$`log10(Bodymass.g.):Light_Levellow`)
 
 phylo_main_p <-  hdr(Main_models$phylogenetic.variance)
@@ -231,30 +231,30 @@ plot(cff_raw$Max_CFF_Hz ~ log10(cff_raw$Bodymass.g.),
      xlab = "log10 of Mass (g)")
 
 points(cff_raw[cff_raw$Light_Level == "low", "Max_CFF_Hz"] ~ log10(cff_raw[cff_raw$Light_Level == "low", "Bodymass.g."]),
-       col = "lightblue",
+       col = "grey70",
        pch= 16)
 
 points(cff_raw[cff_raw$Light_Level == "high", "Max_CFF_Hz"] ~ log10(cff_raw[cff_raw$Light_Level == "high", "Bodymass.g."]),
-       col = "orange",
+       col = rgb(247/250,224/250,89/250),
        pch= 16)
 
 
 points(cff_raw[cff_raw$Habitat== "volant", "Max_CFF_Hz"] ~ log10(cff_raw[cff_raw$Habitat== "volant", "Bodymass.g."]),
        col = "white",
-       pch= 16, cex = 0.8)
+       pch= 16, cex = 0.5)
 
 
 
 ##high light
 abline(inter_main_p$mode, mass_log10_main_p$mode,
-       col = "orange",
+       col = rgb(247/250,224/250,89/250),
        lty = 4,
        lwd = 3)
 
 ##low light
 abline(inter_main_p$mode + lit_low_main_p$mode, 
        mass_log10_main_p$mode + body_lit_inter_main_p$mode,
-       col = "lightblue",
+       col = "grey70",
        lty = 4,
        lwd = 3)
 
@@ -345,9 +345,9 @@ inter_ter_p <-  hdr(ter_models$`(Intercept)`)
 mass_log10_ter_p <-  hdr(ter_models$`log10(Bodymass.g.)`)
 lit_low_ter_p <-  hdr(ter_models$Light_Levellow)
 ballistic_ter_p <-  hdr(ter_models$mode_of_lifepred_ballistic)
-scav_ter_p <-  hdr(ter_models$mode_of_lifescavenger)
+#scav_ter_p <-  hdr(ter_models$mode_of_lifescavenger)
 pur_ter_p <-  hdr(ter_models$mode_of_lifepred_pursuit)
-herb_ter_p <-  hdr(ter_models$mode_of_lifeherbivore)
+#herb_ter_p <-  hdr(ter_models$mode_of_lifeherbivore)
 vol_ter_p <-  hdr(ter_models$Habitatvolant)
 arb_ter_p <-  hdr(ter_models$Habitatarboreal)
 body_lit_inter_ter_p <-  hdr(ter_models$`log10(Bodymass.g.):Light_Levellow`)
@@ -505,18 +505,18 @@ abline(inter_ter_p$mode + lit_low_ter_p$mode,
 ```{r marine data, include=FALSE}
 
 cff_m <- cff_clean[cff_clean$Habitat %in% c("pelagic", 
-                                        "demersal",
-                                        "marine_reef",
-                                        "benthopelagic"
-                                        ,"bathypelagic"
+                                        "demersal"
+                                        #"marine_reef",
+                                        #"benthopelagic"
+                                        #,"bathypelagic"
                                         ),]
 
 cff_m$Habitat <- factor(cff_m$Habitat, 
                                   levels = c("demersal",
-                                             "pelagic", 
-                                        "marine_reef",
-                                        "benthopelagic",
-                                         "bathypelagic"
+                                             "pelagic" 
+                                        #"marine_reef",
+                                        #"benthopelagic",
+                                         #"bathypelagic"
                                         ))
 
 
@@ -582,7 +582,7 @@ inter_mar_p <-  hdr(mar_models$`(Intercept)`)
 mass_log10_mar_p <-  hdr(mar_models$`log10(Bodymass.g.)`)
 lit_low_mar_p <-  hdr(mar_models$Light_Levellow)
 ballistic_mar_p <-  hdr(mar_models$mode_of_lifepred_ballistic)
-scav_mar_p <-  hdr(mar_models$mode_of_lifescavenger)
+#scav_mar_p <-  hdr(mar_models$mode_of_lifescavenger)
 pur_mar_p <-  hdr(mar_models$mode_of_lifepred_pursuit)
 body_lit_inter_mar_p <-  hdr(mar_models$`log10(Bodymass.g.):Light_Levellow`)
 
