@@ -21,45 +21,33 @@ Read in the data
 
 ```{r setup, include=FALSE}
 
-cff_raw <- read.csv("final_cff_data_21_june_2021.csv", 
+cff_raw <- read.csv("final_cff_data_27_july_2021.csv", 
                     header = T,
                     sep = ",")
 
 colnames(cff_raw)[1] <- "Scientific_name"
 
- cff_raw[cff_raw$mode_of_life == "scavenger",]$mode_of_life <- "pred_forage"
-
- cff_raw[cff_raw$mode_of_life == "herbivore",]$mode_of_life <- "pred_forage"
-
-
- cff_raw[cff_raw$Habitat == "marine_reef",]$Habitat <- "demersal"
-
-cff_raw[cff_raw$Habitat == "benthopelagic",]$Habitat <- "demersal"
- 
- cff_raw[cff_raw$Habitat == "bathypelagic",]$Habitat <- "pelagic"
- 
+#cff_raw[cff_raw$mode_of_life == "scavenger",]$mode_of_life <- "pred_forage"
+#cff_raw[cff_raw$mode_of_life == "herbivore",]$mode_of_life <- "pred_forage"
+#cff_raw[cff_raw$Habitat == "marine_reef",]$Habitat <- "demersal"
+cff_raw[cff_raw$Habitat == "benthopelagic",]$Habitat <- "pelagic"
+#cff_raw[cff_raw$Habitat == "bathypelagic",]$Habitat <- "pelagic"
 cff_raw[cff_raw$Habitat == "arboreal",]$Habitat <- "terrestrial"
-
 
 cff_raw$mode_of_life <- factor(cff_raw$mode_of_life, 
                                   levels = c("pred_forage",   
                                              "deposite", 
                                              "pred_ballistic",   
-                                             #"scavenger",  
                                              "pred_pursuit"
-                                            #,"herbivore"
                                              ))
 
 
 cff_raw$Habitat <- factor(cff_raw$Habitat, 
-                                  levels = c("terrestrial",   
+                                  levels = c("terrestrial",
+                                             "arboreal",
                                              "pelagic", 
-                                             "demersal",   
-                                             #"marine_reef",
-                                             #"bathypelagic",
+                                             "demersal",
                                              "volant"
-                                             #"arboreal"
-                                             #"benthopelagic"
                                              ))
   
  
@@ -85,7 +73,7 @@ Read in the phylogeny.
 
 ```{r phylo, include=FALSE}
 
-cff_tree <- read.tree("cff_tree.tree")
+cff_tree <- read.tree("cff_tree_27_july_2021.tree")
 
 cff_tree <- cff_tree[1:100]
 
@@ -121,10 +109,6 @@ burnin <- 20000
 parameters <- c(nitt,
                 thin,
                 burnin)
-
-#nitt <- 12000
-#thin <- 5
-#burnin <- 2000
 
 ```
 
@@ -622,14 +606,14 @@ points(cff_m[cff_m$Light_Level == "low", "Max_CFF_Hz"] ~ log10(cff_m[cff_m$Light
        pch= 16)
 
 ##high light
-abline(summary(full_mar_1)$solutions[1] + 15.3539, summary(full_mar_1)$solutions[2],
+abline(summary(full_mar_1)$solutions[1], summary(full_mar_1)$solutions[2],
        col = "orange",
        lty = 4,
        lwd = 3)
 
 ##low light
-abline(summary(full_mar_1)$solutions[1] + summary(full_mar_1)$solutions[3] +15.3539, 
-       summary(full_mar_1)$solutions[2] + summary(full_mar_1)$solutions[12],
+abline(summary(full_mar_1)$solutions[1] + summary(full_mar_1)$solutions[3], 
+       summary(full_mar_1)$solutions[2] + summary(full_mar_1)$solutions[8],
        col = "lightblue",
        lty = 4,
        lwd = 3)
