@@ -14,7 +14,7 @@ library(caper)
 library(MCMCglmm)
 library(hdrcde)
 library(mulTree)
-source("MultiDisPlot.R")
+#source("MultiDisPlot.R")
 ```
 
 
@@ -22,50 +22,44 @@ Read in the data
 
 ```{r setup, include=FALSE}
 
-cff_raw <- read.csv("final_cff_data_27_july_2021.csv", 
+cff_raw <- read.csv("Full_CFF_working_12_7_24.csv", 
                     header = T,
                     sep = ",")
 
-colnames(cff_raw)[1] <- "Scientific_name"
+#This drops a couple fo studies that do not meet our criteria
 
-#cff_raw[cff_raw$mode_of_life == "scavenger",]$mode_of_life <- "pred_forage"
-#cff_raw[cff_raw$mode_of_life == "herbivore",]$mode_of_life <- "pred_forage"
-#cff_raw[cff_raw$Habitat == "marine_reef",]$Habitat <- "demersal"
-cff_raw[cff_raw$Habitat == "benthopelagic",]$Habitat <- "pelagic"
-#cff_raw[cff_raw$Habitat == "bathypelagic",]$Habitat <- "pelagic"
-cff_raw[cff_raw$Habitat == "arboreal",]$Habitat <- "terrestrial"
+cff_raw <- cff_raw[cff_raw$Critical_appraisal_keep == "y",]
+
+cff_raw[cff_raw$habitat == "benthopelagic",]$habitat <- "pelagic"
+cff_raw[cff_raw$habitat == "arboreal",]$habitat <- "terrestrial"
 
 cff_raw$mode_of_life <- factor(cff_raw$mode_of_life, 
-                                  levels = c("pred_forage",   
-                                             "deposite", 
-                                             "pred_ballistic",   
-                                             "pred_pursuit"
+                                  levels = c("forage",   
+                                             "ballistic",   
+                                             "pursuit"
                                              ))
-#As there is only 1 deposite species we will drop it
-cff_raw <- cff_raw[cff_raw$mode_of_life != "deposite",]
 
-cff_raw$Habitat <- factor(cff_raw$Habitat, 
+
+
+cff_raw$Habitat <- factor(cff_raw$habitat, 
                                   levels = c("terrestrial",
-                                             #"arboreal",
                                              "pelagic", 
                                              "demersal",
                                              "volant"
                                              ))
   
  
-cff_clean <- cff_raw[,c("Scientific_name",
-                        "taxa_group",
-                        "taxa_phyla",
-                        "taxa_class",
-                        "Light_Level",
+cff_clean <- cff_raw[,c("Species_phylo",
+                        "Class",
+                        "habitat",
+                        "forage_light_level",
+                        "body_mass_us",
+                        "mode_of_life",
                         "Method",
-                        "Max_CFF_Hz",
-                        "Bodymass.g.",
-                        "Habitat",
-                        "mode_of_life")]
+                        "CFF_max")]
  
 
-cff_clean <- data.frame(cff_clean, animal = cff_clean$Scientific_name)
+cff_clean <- data.frame(cff_clean, animal = cff_clean$Species_phylo)
 
 cff_clean <- na.omit(cff_clean)
 
@@ -76,7 +70,7 @@ Read in the phylogeny.
 
 ```{r phylo, include=FALSE}
 
-cff_tree <- read.tree("cff_tree_27_july_2021.tree")
+cff_tree <- read.tree("cff_tree_18_july_2024.tree")
 
 cff_tree <- cff_tree[1:100]
 
@@ -87,12 +81,31 @@ We can plot the phylogeny
 
 ```{r phylo plot, include=FALSE}
 
+
+cff_phylo_plot_cff <- c()
+cff_phylo_plot_light <- c()
+cff_phylo_plot_species <- c()
+
+for(i in 1:length(unique(cff_clean$Species_phylo))){
+  
+ cff_phylo_plot_species[i] <-  unique(cff_clean$Species_phylo)[i]
+ cff_phylo_plot_light[i] <-  cff_clean[cff_clean$Species_phylo == unique(cff_clean$Species_phylo)[i], "forage_light_level"][1]
+ cff_phylo_plot_cff[i] <-  max(cff_clean[cff_clean$Species_phylo == unique(cff_clean$Species_phylo)[i], "CFF_max"])
+
+}
+
+
+cff_phylo_plot <- data.frame(cff_phylo_plot_species,
+                             cff_phylo_plot_light,
+                             cff_phylo_plot_cff)
+
 #create data with rownames for p
-rownames(cff_clean) <- cff_clean$Scientific_name
-Max_CFF_Hz_plot <-setNames(cff_clean$Max_CFF_Hz,rownames(cff_clean))
+rownames(cff_phylo_plot) <- cff_phylo_plot$cff_phylo_plot_species
+
+Max_CFF_Hz_plot <-setNames(cff_phylo_plot$cff_phylo_plot_cff,rownames(cff_phylo_plot))
 
 
-par(mar=c(5.1,4.1,4.1,2.1))
+par(mar=c(4.1,4.1,4.1,2.1))
 
 plotTree.wBars(cff_tree[[1]], 
                  Max_CFF_Hz_plot,
@@ -148,6 +161,8 @@ Set the prior. Here we stick with a x prior.
 ```{r prior}
 prior <-list(R = list(V = 1, nu=0.002), 
              G = list(G1=list(V = 1,n = 2, 
+                              nu=0.002),
+                      G2=list(V = 1,n = 2, 
                               nu=0.002)
                      ))
 
@@ -174,11 +189,12 @@ mulTree(mulTree.data = cff_mul,
         ask = TRUE)
 
 
-#full_model_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+#full_model_1 <- MCMCglmm(CFF_max ~ log10(body_mass_us)*forage_light_level 
 #                                  + mode_of_life
-#                                  + Habitat         
+#                                  + habitat
+#                                  + Method
 #                         ,
-#                         random = ~ animal,
+#                         random = ~ animal + Species_phylo,
 #                         rcov=~ units, 
 #                         data = cff_clean, 
 #                         pedigree = cff_tree[[1]], 
@@ -287,15 +303,14 @@ Set the data into a Multree object.
 ```{r Multree data, include=FALSE}
 
 
-cff_t <- cff_clean[cff_clean$Habitat %in% c("volant", 
+cff_t <- cff_clean[cff_clean$habitat %in% c("volant", 
                                         "terrestrial"
                                         #,"arboreal"
                                         ),]
 
-cff_t$Habitat <- factor(cff_t$Habitat, 
+cff_t$habitat <- factor(cff_t$habitat, 
                                   levels = c("terrestrial",   
                                              "volant"
-                                              #,"arboreal"
                                              ))
 
 cff_mul_terr <- as.mulTree(cff_t, 
@@ -315,9 +330,9 @@ Run the terrestrial multree model
 
 
 mulTree(mulTree.data = cff_mul_terr, 
-        formula = Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+        formula = CFF_max ~ log10(body_mass_us)*forage_light_level 
                                   + mode_of_life
-                                  + Habitat,
+                                  + habitat,
         parameters = parameters, 
         chains = 2,
         priors = prior,
@@ -329,10 +344,10 @@ mulTree(mulTree.data = cff_mul_terr,
         ask = TRUE)
 
 
-#full_ter_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+#full_ter_1 <- MCMCglmm(CFF_max ~ log10(body_mass_us)*forage_light_level 
 #                                  + mode_of_life
-#                                  + Habitat,
-#                         random = ~ animal,
+#                                  + habitat,
+#                         random = ~ animal + Species_phylo,
 #                         rcov=~ units, 
 #                         data = cff_t, 
 #                         pedigree = cff_tree[[1]], 
@@ -444,14 +459,14 @@ points(cff_t[cff_t$Light_Level == "high", "Max_CFF_Hz"] ~ jitter(as.numeric(cff_
 
 ```{r marine data, include=FALSE}
 
-cff_m <- cff_clean[cff_clean$Habitat %in% c("pelagic", 
+cff_m <- cff_clean[cff_clean$habitat %in% c("pelagic", 
                                         "demersal"
                                         #"marine_reef",
                                         #"benthopelagic"
                                         #,"bathypelagic"
                                         ),]
 
-cff_m$Habitat <- factor(cff_m$Habitat, 
+cff_m$habitat <- factor(cff_m$habitat, 
                                   levels = c("demersal",
                                              "pelagic" 
                                         #"marine_reef",
@@ -476,9 +491,9 @@ cff_mul_mar <- as.mulTree(cff_m,
 
 
 mulTree(mulTree.data = cff_mul_mar, 
-        formula = Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+        formula = CFF_max ~ log10(body_mass_us)*forage_light_level 
                                   + mode_of_life
-                                  + Habitat,
+                                  + habitat,
         parameters = parameters, 
         chains = 2,
         priors = prior,
@@ -490,11 +505,12 @@ mulTree(mulTree.data = cff_mul_mar,
         ask = TRUE)
 
 
-#full_mar_1 <- MCMCglmm(Max_CFF_Hz ~ log10(Bodymass.g.)*Light_Level 
+#full_mar_1 <- MCMCglmm(CFF_max ~ log10(body_mass_us)*forage_light_level 
 #                                  + mode_of_life
-#                                  + Habitat
+#                                  + habitat
+#                                  + Method
 #                       ,
-#                         random = ~ animal,
+#                         random = ~ animal + Species_phylo,
 #                         rcov=~ units, 
 #                         data = cff_m, 
 #                         pedigree = cff_tree[[1]], 

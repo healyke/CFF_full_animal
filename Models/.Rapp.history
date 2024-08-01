@@ -1,0 +1,3 @@
+load("/Users/kevinhealy/Desktop/Github/CFF_full_animal/Models/mulTree_models-tree100_chain1.rda")
+model
+summary(model)
